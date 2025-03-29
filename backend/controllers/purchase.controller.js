@@ -121,26 +121,37 @@ export const getUserProfitAndPlans = async (req, res) => {
 };
 
 
-
-
 export const getUserPlansWithTasks = async (req, res) => {
   try {
-    const userId = req.params.userId; // Get userId from the request parameters
+    const userId = req.params.userId;
 
-    // Fetch the user's purchased plans, populate task details only for active plans
+    // Fetch active user plans
     const userPlans = await UserPlan.find({ userId, state: 'active' })
-      .populate('planId', 'name price duration dailyProfit totalProfit') // Plan data
-      .populate({
-        path: 'tasks',
-        model: 'Task',
-        select: 'type price url status', // Only select the required task fields
-      });
+      .populate('planId', 'name price duration dailyProfit totalProfit') // Plan details
+      .lean(); // Convert Mongoose docs to plain objects
 
     if (!userPlans.length) {
       return res.status(404).json({ message: 'No active plans found for this user.' });
     }
 
-    return res.status(200).json({ message: 'Active plans fetched successfully', userPlans });
+    // Extract planIds from the user's active plans
+    const planIds = userPlans.map(plan => plan.planId._id);
+
+    // Fetch all tasks linked to these active plans
+    const tasks = await Task.find({ planId: { $in: planIds } })
+      .select('type price url status planId') // Only fetch required fields
+      .lean();
+
+    // Map tasks to corresponding user plans
+    const userPlansWithTasks = userPlans.map(plan => ({
+      ...plan,
+      tasks: tasks.filter(task => task.planId.toString() === plan.planId._id.toString()),
+    }));
+
+    return res.status(200).json({
+      message: 'Active plans fetched successfully',
+      userPlans: userPlansWithTasks,
+    });
   } catch (error) {
     console.error("Error fetching user's active plans:", error);
     return res.status(500).json({ message: 'Server error' });
@@ -259,72 +270,27 @@ export const getTotalDepositOfUserPlans = async (req, res) => {
 };
 
 
+export const updatePlanState = async (req, res) => {
+  try {
+    const { planId } = req.body; // Extract the planId from the request body
 
-  export const updatePlanState = async (req, res) => {
-    try {
-      const { planId } = req.body;  // Extract the planId from the request body
-
-      // Find the user plan based on planId and state "pending"
-      const userPlan = await UserPlan.findOne({ planId, state: 'pending' }).populate('planId');
-      if (!userPlan) {
-        return res.status(404).json({ message: 'No pending plan found for the given planId' });
-      }
-
-      // Update the state of the found user plan to "active"
-      userPlan.state = 'active';
-      await userPlan.save();
-
-      // Update the user's earnings based on daily profit
-      const earnings = await Earnings.findOneAndUpdate(
-        { userId: userPlan.userId },
-        { $inc: { totalEarnings: userPlan.dailyProfit } },
-        { upsert: true, new: true }
-      );
-
-      // Add daily earnings record
-      earnings.dailyEarnings.push({
-        date: new Date(),
-        amount: userPlan.dailyProfit,
-      });
-      await earnings.save();
-
-      // Handle referral earnings (only for users who were referred)
-      const user = await User.findById(userPlan.userId).populate('referredBy');
-      if (user?.referredBy) {
-        const referrerId = user.referredBy._id;
-
-        // Calculate one-time referral bonus (10% of plan price)
-        const oneTimeReferralBonus = userPlan.planId.price * 0.05;
-
-        // Add referral earnings to the referrer's account
-        const referrerEarnings = await Earnings.findOneAndUpdate(
-          { userId: referrerId },
-          { $inc: { totalEarnings: oneTimeReferralBonus } },
-          { upsert: true, new: true }
-        );
-
-        // Record referral earnings in daily earnings
-        referrerEarnings.dailyEarnings.push({
-          date: new Date(),
-          amount: oneTimeReferralBonus,
-        });
-        await referrerEarnings.save();
-
-        // Store referral details for daily profit share
-        const referralEarning = new ReferralEarnings({
-          userId: referrerId,
-          referredUserId: userPlan.userId,
-          dailyProfitShare: userPlan.planId.dailyProfit * 0.05,
-        });
-        await referralEarning.save();
-      }
-
-      return res.status(200).json({ message: 'Plan updated to active and earnings updated' });
-    } catch (error) {
-      console.error('Error in updatePlanState:', error);
-      return res.status(500).json({ message: 'Server error' });
+    // Find the user plan based on planId and state "pending"
+    const userPlan = await UserPlan.findOne({ planId, state: 'pending' }).populate('planId');
+    if (!userPlan) {
+      return res.status(404).json({ message: 'No pending plan found for the given planId' });
     }
-  };
+
+    // Update the state of the found user plan to "active"
+    userPlan.state = 'active';
+    await userPlan.save();
+
+    return res.status(200).json({ message: 'Plan updated to active successfully' });
+  } catch (error) {
+    console.error('Error in updatePlanState:', error);
+    return res.status(500).json({ message: 'Server error' });
+  }
+};
+
 
   export const getAllPurchasedPlans = async (req, res) => {
     try {
@@ -420,8 +386,8 @@ export const getReferralDetails = async (req, res) => {
       if (user2Plan) {
         const plan = user2Plan.planId; // The plan details of User2
 
-        // Calculate 10% profit User1 will get
-        const referralProfit = plan.price * 0.05; // 10% of the plan price
+        // Calculate 5% profit User1 will get
+        const referralProfit = plan.price * 0.05; // 5% of the plan price
 
         // Accumulate the total referral profit
         totalReferralProfit += referralProfit;

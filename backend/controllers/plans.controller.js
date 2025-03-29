@@ -1,5 +1,5 @@
 import Plan from '../models/plan.model.js';
-
+import mongoose from 'mongoose';
 // Check if plan already exists
 export const checkPlanExistence = async (req, res) => {
   const { name } = req.params;
@@ -81,28 +81,56 @@ export const getPlans = async (req, res) => {
   }
 };
 // Delete plan by ID
-export const deletePlanById = async (req, res) => {
-  const { id } = req.params; // Extract the plan ID from the URL
+export const updatePlanById = async (req, res) => {
+  const { id } = req.params;
+  const { price, duration, dailyProfit, totalProfit } = req.body;
 
   try {
-    // Find the plan by ID and remove it
-    const deletedPlan = await Plan.findByIdAndDelete(id);
+    // Validate the plan ID
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: "Invalid plan ID" });
+    }
 
-    if (!deletedPlan) {
-      return res.status(404).json({
-        message: `Plan with ID ${id} not found.`,
+    // Check if the plan exists
+    const existingPlan = await Plan.findById(id);
+    if (!existingPlan) {
+      return res.status(404).json({ message: "Plan not found" });
+    }
+
+    // Explicitly prevent name updates
+    if (req.body.name && req.body.name !== existingPlan.name) {
+      return res.status(400).json({
+        message: "Plan name cannot be modified after creation"
       });
     }
 
+    // Prepare update object with only the allowed fields
+    const updateData = {};
+    if (price) updateData.price = price;
+    if (duration) updateData.duration = duration;
+    if (dailyProfit) updateData.dailyProfit = dailyProfit;
+    if (totalProfit) updateData.totalProfit = totalProfit;
+
+    // Update the plan
+    const updatedPlan = await Plan.findByIdAndUpdate(
+      id,
+      updateData,
+      { 
+        new: true,         // Return the updated document
+        runValidators: true // Run schema validations
+      }
+    );
+
     res.status(200).json({
-      message: `Plan with ID ${id} deleted successfully.`,
-      plan: deletedPlan,
+      message: "Plan updated successfully",
+      plan: updatedPlan
     });
+
   } catch (error) {
-    console.error(error);
+    console.error("Error updating plan:", error);
     res.status(500).json({
-      message: "Error deleting plan.",
-      error: error.message,
+      message: "Error updating plan",
+      error: error.message
     });
   }
 };

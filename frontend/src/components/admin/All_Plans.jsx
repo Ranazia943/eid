@@ -10,14 +10,79 @@ import ForumIcon from '@mui/icons-material/Forum';
 import SportsKabaddiIcon from '@mui/icons-material/SportsKabaddi';
 import WorkspacePremiumIcon from '@mui/icons-material/WorkspacePremium';
 import { CurrencyExchange, Delete, Edit } from '@mui/icons-material';
-import { Button,Box , Tooltip } from '@mui/material';
 import { toast } from "react-hot-toast"; // Import toast for notifications
-
+import { 
+  Button, 
+  Box, 
+  Tooltip, 
+  Modal,  
+  TextField 
+} from '@mui/material';
 const All_Plains = () => {
     const [side, setSide] = useState(false)
     const [isactive, setIsactive] = useState(0)
     const [isopentoggle, setIsopentoggle] = useState(false)
     const [plans, setPlans] = useState([]);  // State to store plans
+    const [openModal, setOpenModal] = useState(false);
+    const [currentPlan, setCurrentPlan] = useState(null);
+
+    const [formData, setFormData] = useState({
+      price: '',
+      duration: '',
+      dailyProfit: '',
+      totalProfit: ''
+  });
+  const handleOpenUpdate = (plan) => {
+    setCurrentPlan(plan);
+    setFormData({
+        price: plan.price,
+        duration: plan.duration,
+        dailyProfit: plan.dailyProfit,
+        totalProfit: plan.totalProfit
+    });
+    setOpenModal(true);
+};
+
+// Close modal
+const handleCloseModal = () => {
+    setOpenModal(false);
+    setCurrentPlan(null);
+};
+
+// Handle form input changes
+const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({
+        ...prev,
+        [name]: value
+    }));
+};
+
+// Update plan function
+const updatePlan = async () => {
+    try {
+        const baseURL = import.meta.env.VITE_API_BASE_URL;
+        const response = await fetch(`${baseURL}/api/plan/update/${currentPlan._id}`, {
+            method: 'put',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(formData)
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            toast.success('Plan updated successfully!');
+            fetchPlans(); // Refresh the plans list
+            handleCloseModal();
+        } else {
+            throw new Error(data.message || 'Failed to update plan');
+        }
+    } catch (error) {
+        toast.error(error.message);
+    }
+};
 
     const fetchPlans = async () => {
       try {
@@ -42,34 +107,7 @@ const All_Plains = () => {
       }
     };
     
-      // Delete a plan
-     // Delete a plan
-const deletePlan = async (planId) => {
-  try {
-    const baseURL = import.meta.env.VITE_API_BASE_URL;
 
-    const response = await fetch(`${baseURL}/api/plan/delete/${planId}`, {
-      method: 'DELETE',
-    });
-    const data = await response.json();
-
-    if (data.plan) {
-      toast.success('Plan deleted successfully!', {
-        position: 'top-center', // Toast appears at the top
-        style: {
-          background: '#4ade80', // Green background
-          color: 'white', // White text
-          fontWeight: 'bold',
-        },
-      });
-      setPlans(plans.filter(plan => plan._id !== planId));  // Remove deleted plan from state
-    } else {
-      toast.error('Failed to delete plan');
-    }
-  } catch (error) {
-    toast.error('Error deleting plan: ' + error.message);
-  }
-};
 
     
     const isopen = (ind)=>{
@@ -247,26 +285,105 @@ const deletePlan = async (planId) => {
 </Link>
 
       {/* Delete Button */}
-      <Tooltip title="Delete Plan" placement="top">
-        <Button
-          variant="contained"
-          sx={{
-            background: "#f44336",
-            width: { xs: '100%', sm: 'auto' },  // Full width on small screens
-            marginTop: { xs: 2, sm: 0 },  // Add top margin for small screens to separate buttons
-            fontSize: '0.8rem', // Smaller text
-            padding: '6px 12px', // Smaller padding
-          }}
-          onClick={() => deletePlan(plan._id)}
-        >
-          <Delete fontSize="small" /> {/* Smaller icon size */}
-        </Button>
-      </Tooltip>
+      <Tooltip title="Update Plan" placement="top">
+    <Button
+        variant="contained"
+        sx={{
+            background: "#1976d2", // Blue color for update
+            width: { xs: '100%', sm: 'auto' },
+            marginTop: { xs: 2, sm: 0 },
+            fontSize: '0.8rem',
+            padding: '6px 12px',
+        }}
+        onClick={() => handleOpenUpdate(plan)} // Pass the plan data
+    >
+        <Edit fontSize="small" /> {/* Edit icon instead of Delete */}
+    </Button>
+</Tooltip>
     </Box>
         </div>
       </div>
     ))}
   </div>
+
+
+  <Modal
+                open={openModal}
+                onClose={handleCloseModal}
+                aria-labelledby="update-plan-modal"
+                aria-describedby="update-plan-form"
+            >
+                <Box sx={{
+                    position: 'absolute',
+                    top: '50%',
+                    left: '50%',
+                    transform: 'translate(-50%, -50%)',
+                    width: 400,
+                    bgcolor: 'background.paper',
+                    boxShadow: 24,
+                    p: 4,
+                    borderRadius: 2
+                }}>
+                    <h2 className="text-xl font-bold mb-4">Update {currentPlan?.name} Plan</h2>
+                    
+                    <div className="space-y-4">
+                        <TextField
+                            fullWidth
+                            label="Price"
+                            name="price"
+                            type="number"
+                            value={formData.price}
+                            onChange={handleInputChange}
+                            variant="outlined"
+                        />
+                        <TextField
+                            fullWidth
+                            label="Duration (Days)"
+                            name="duration"
+                            type="number"
+                            value={formData.duration}
+                            onChange={handleInputChange}
+                            variant="outlined"
+                        />
+                        <TextField
+                            fullWidth
+                            label="Daily Profit"
+                            name="dailyProfit"
+                            type="number"
+                            value={formData.dailyProfit}
+                            onChange={handleInputChange}
+                            variant="outlined"
+                        />
+                        <TextField
+                            fullWidth
+                            label="Total Profit"
+                            name="totalProfit"
+                            type="number"
+                            value={formData.totalProfit}
+                            onChange={handleInputChange}
+                            variant="outlined"
+                        />
+                    </div>
+
+                    <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 3 }}>
+                        <Button 
+                            onClick={handleCloseModal} 
+                            sx={{ mr: 2 }}
+                            variant="outlined"
+                        >
+                            Cancel
+                        </Button>
+                        <Button 
+                            onClick={updatePlan}
+                            variant="contained"
+                            color="primary"
+                        >
+                            Update Plan
+                        </Button>
+                    </Box>
+                </Box>
+            </Modal>
+
 </div>
 
             </div>

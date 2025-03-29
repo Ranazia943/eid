@@ -1,5 +1,5 @@
 import express from 'express';
-import { getPlans, addPlan, checkPlanExistence, deletePlanById } from '../controllers/plans.controller.js';
+import { getPlans, addPlan, checkPlanExistence, updatePlanById } from '../controllers/plans.controller.js';
 
 const router = express.Router();
 
@@ -11,8 +11,8 @@ router.post('/add', addPlan);
 
 // Route for getting all plans
 router.get('/all', getPlans);
+router.patch('/update/:id', updatePlanById);
 
 // Route for deleting a plan by ID
-router.delete('/delete/:id', deletePlanById);
 
 export default router;

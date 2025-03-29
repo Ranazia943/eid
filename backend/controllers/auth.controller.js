@@ -4,9 +4,11 @@ import generateTokenAndSetCookie from "../utils/generateToken.js";
 import { nanoid } from "nanoid"; // For unique referral codes
 import nodemailer from "nodemailer";
 import crypto from "crypto";
+import Task from '../models/task.model.js'
 import Earnings from "../models/earning.model.js"; // Import Earnings model
-
-
+import UserPlan from '../models/userplan.model.js'
+import mongoose from "mongoose";
+import ReferralEarnings from '../models/ReferralEarnings.model.js'
 export const registerUser = async (req, res) => {
   try {
     const { username, email, password, confirmPassword, referredBy, role } = req.body;
@@ -116,31 +118,70 @@ export const registerUser = async (req, res) => {
 
 
 export const deleteUserById = async (req, res) => {
-  const { userId } = req.params; // Get userId from URL parameters
+  const { userId } = req.params;
 
   try {
-    // Find the user by ID
+    // Validate the user ID
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      return res.status(400).json({ message: "Invalid user ID" });
+    }
+
+    // 1. Find the user
     const user = await User.findById(userId);
-    
-    // If the user does not exist
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
 
-    // Delete the user's earnings entry
-    await Earnings.findOneAndDelete({ userId: user._id });
+    // 2. Delete all user plans and their associated data
+    const userPlans = await UserPlan.find({ userId });
+    
+    // Delete all tasks associated with these plans
+    const taskIds = userPlans.flatMap(plan => plan.tasks);
+    await Task.deleteMany({ _id: { $in: taskIds } });
+    
+    // Delete all user plans
+    await UserPlan.deleteMany({ userId });
 
-    // Delete the user
-    await User.deleteOne({ _id: user._id }); // Use deleteOne instead of remove
+    // 3. Handle referral relationships
+    // Remove user from referrer's referrals array
+    if (user.referredBy) {
+      await User.updateOne(
+        { _id: user.referredBy },
+        { $pull: { referrals: user._id } }
+      );
+    }
 
-    res.status(200).json({ message: "User and associated data deleted successfully" });
+    // Update users who were referred by this user
+    await User.updateMany(
+      { referredBy: user._id },
+      { $unset: { referredBy: "" } }
+    );
+
+    // 4. Delete earnings
+    await Earnings.deleteMany({ userId });
+
+    // 5. Delete referral earnings
+    await ReferralEarnings.deleteMany({ 
+      $or: [{ referrerId: userId }, { refereeId: userId }]
+    });
+
+    // 6. Finally delete the user
+    await User.deleteOne({ _id: userId });
+    
+    res.status(200).json({ 
+      message: "User and all associated data deleted successfully",
+      deletedUserPlans: userPlans.length,
+      deletedTasks: taskIds.length
+    });
+
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: "Server error" });
+    console.error("Error deleting user:", error);
+    res.status(500).json({ 
+      message: "Failed to delete user and associated data",
+      error: error.message 
+    });
   }
 };
-
-
 export const updateProfile = async (req, res) => {
   const { username, email, password, confirmPassword, image } = req.body;
   const { userId } = req.params;  // Access the userId from the URL parameter

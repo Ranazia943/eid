@@ -48,18 +48,42 @@ const AllUsers = () => {
   };
 
   const handleDelete = async (userId) => {
+    if (!window.confirm("Are you sure you want to delete this user and all their associated data?")) {
+      return;
+    }
+
     try {
       const baseURL = import.meta.env.VITE_API_BASE_URL;
       const response = await axios.delete(`${baseURL}/api/auth/user/${userId}`);
+      
       if (response.status === 200) {
+        // Update the UI by removing the deleted user
         setUsers(users.filter((user) => user._id !== userId));
-        toast.success("User deleted successfully.");
+        
+        // Check if there was any additional data deleted
+        if (response.data.deletedUserPlans || response.data.deletedTasks) {
+          toast.success(
+            `User deleted successfully. Removed ${response.data.deletedUserPlans || 0} plans and ${response.data.deletedTasks || 0} tasks.`
+          );
+        } else {
+          toast.success("User deleted successfully.");
+        }
       } else {
         toast.error("Failed to delete user.");
       }
     } catch (error) {
       console.error("Error deleting user:", error);
-      toast.error("Failed to delete user.");
+      
+      if (error.response) {
+        // Server responded with an error status code
+        toast.error(error.response.data.message || "Failed to delete user and associated data.");
+      } else if (error.request) {
+        // Request was made but no response received
+        toast.error("No response from server. Please try again.");
+      } else {
+        // Something happened in setting up the request
+        toast.error("Error in request setup. Please try again.");
+      }
     }
   };
 
@@ -169,15 +193,18 @@ const AllUsers = () => {
                     <tr key={user._id} className="even:bg-gray-100">
                       <td className="p-4">{user.username}</td>
                       <td className="p-4">{user.email}</td>
-                      <td className="p-4">User</td>
+                      <td className="p-4">{user.role}</td>
                       <td className="p-4 flex items-center gap-4">
                         <Link to={`/admin/dashboard/userdetail/${user._id}`} className="text-blue-500 hover:underline">
                           Details
                         </Link>
-                        <button onClick={() => handleDelete(user._id)} className="text-red-500 hover:text-red-700" title="Delete User">
+                        <button 
+                          onClick={() => handleDelete(user._id)} 
+                          className="text-red-500 hover:text-red-700" 
+                          title="Delete User and all associated data"
+                        >
                           <MdDelete size={20} />
                         </button>
-                       
                       </td>
                     </tr>
                   ))
@@ -187,8 +214,6 @@ const AllUsers = () => {
           </div>
         </div>
       </div>
-
-     
     </div>
   );
 };

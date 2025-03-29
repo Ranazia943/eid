@@ -7,7 +7,7 @@ import { toast, Toaster } from "react-hot-toast"; // Import react-hot-toast
 export const Recharge_form = () => {
   const { authUser, authToken } = useAuthContext(); // Use AuthContext to get user details
   const [plans, setPlans] = useState([]);
-  const [paymentGateways, setPaymentGateways] = useState(["EasyPaisa", "JazzCash", "Bank Transfer"]);
+  const [paymentGateways, setPaymentGateways] = useState(["EasyPaisa", "Sadapay", "Bank Transfer"]);
   const [selectedPlan, setSelectedPlan] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("");
   const [taxId, setTaxId] = useState("");
@@ -93,47 +93,56 @@ export const Recharge_form = () => {
     const errors = validateForm();
     setFormErrors(errors);
   
-    // If there are validation errors, stop form submission
     if (Object.keys(errors).length > 0) return;
   
-    // Upload the payment screenshot to Cloudinary
+    setIsSubmitted(true);
+  
     const screenshotUrl = await uploadScreenshot(paymentScreenshot);
     if (!screenshotUrl) {
       toast.error("Error uploading screenshot. Please try again.");
+      setIsSubmitted(false);
       return;
     }
   
-    // Prepare the form data for the purchase request
     const formData = {
-      planId: planDetails._id,                // Plan ID
-      paymentGateway: paymentMethod,          // Payment method
-      paymentScreenshot: screenshotUrl,       // URL of the uploaded screenshot
-      taxId: taxId                            // Tax ID
+      planId: planDetails._id,
+      paymentGateway: paymentMethod,
+      paymentScreenshot: screenshotUrl,
+      taxId: taxId,
     };
   
     try {
-      
-      // Send POST request to the server to purchase the plan
       const baseURL = import.meta.env.VITE_API_BASE_URL;
       const response = await axios.post(`${baseURL}/api/userplan/purchase/${authUser._id}`, formData, {
-        headers: {
-          Authorization: `Bearer ${authToken}`,  // Include auth token in request headers for authorization
-        },
+        headers: { Authorization: `Bearer ${authToken}` },
       });
   
-      if (response.data.message === "Plan purchased successfully") {
-        toast.success("Your plan purchase is being processed. You will be notified once the payment is verified.", {
-          duration: 2000,
-          style: {
-            background: 'green',
-            color: 'white',
-          },
+      console.log("Response from API:", response.data);
+  
+      if (response.data.message?.toLowerCase().includes("plan purchased")) {
+        console.log("Toast should appear now!");
+        toast.success("Your plan purchase is under review. You will be notified once verified.", {
+          duration: 3000,
+          style: { background: "green", color: "white" },
         });
-        setIsSubmitted(true);  // Show success message
+  
+        setTimeout(() => {
+          setSelectedPlan("");
+          setPaymentMethod("");
+          setTaxId("");
+          setPaymentScreenshot(null);
+          setPlanDetails(null);
+          setFormErrors({});
+          setIsSubmitted(false);
+        }, 1000);
+      } else {
+        toast.error("Unexpected response. Please try again.");
+        console.warn("Unexpected API response:", response.data);
       }
     } catch (error) {
       console.error("Error in purchase plan:", error);
       toast.error("There was an issue processing your payment. Please try again.");
+      setIsSubmitted(false);
     }
   };
   
@@ -149,12 +158,12 @@ export const Recharge_form = () => {
             <p>Account No: 03472627044</p>
           </div>
         );
-      case "JazzCash":
+      case "Sadapay":
         return (
           <div className="mt-4 bg-gray-800 text-white p-4 rounded-lg">
-            <h4>JazzCash Details:</h4>
-            <p>Bank: (JazzCash)</p>
-            <p>Name: Sheryar Ahmad</p>
+            <h4>Sadapay Details:</h4>
+            <p>Bank: (Sadapay)</p>
+            <p>Name: Neelam Naz</p>
             <p>Account No: 03288187708</p>
           </div>
         );
