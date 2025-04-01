@@ -63,7 +63,7 @@ const updatePlan = async () => {
     try {
         const baseURL = import.meta.env.VITE_API_BASE_URL;
         const response = await fetch(`${baseURL}/api/plan/update/${currentPlan._id}`, {
-            method: 'put',
+            method: 'PUT',
             headers: {
                 'Content-Type': 'application/json',
             },

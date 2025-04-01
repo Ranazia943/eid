@@ -11,7 +11,7 @@ router.post('/add', addPlan);
 
 // Route for getting all plans
 router.get('/all', getPlans);
-router.patch('/update/:id', updatePlanById);
+router.put('/update/:id', updatePlanById);
 
 // Route for deleting a plan by ID
 

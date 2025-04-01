@@ -9,6 +9,9 @@ import Earnings from "../models/earning.model.js"; // Import Earnings model
 import UserPlan from '../models/userplan.model.js'
 import mongoose from "mongoose";
 import ReferralEarnings from '../models/ReferralEarnings.model.js'
+
+import WithdrawalRequest from '../models/WithdrawalRequest.js'; // Add this import at the top
+
 export const registerUser = async (req, res) => {
   try {
     const { username, email, password, confirmPassword, referredBy, role } = req.body;
@@ -116,7 +119,6 @@ export const registerUser = async (req, res) => {
   }
 };
 
-
 export const deleteUserById = async (req, res) => {
   const { userId } = req.params;
 
@@ -126,52 +128,80 @@ export const deleteUserById = async (req, res) => {
       return res.status(400).json({ message: "Invalid user ID" });
     }
 
+    // Convert userId to ObjectId
+    const userObjectId = new mongoose.Types.ObjectId(userId);
+
     // 1. Find the user
-    const user = await User.findById(userId);
+    const user = await User.findById(userObjectId);
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
 
-    // 2. Delete all user plans and their associated data
-    const userPlans = await UserPlan.find({ userId });
-    
-    // Delete all tasks associated with these plans
-    const taskIds = userPlans.flatMap(plan => plan.tasks);
-    await Task.deleteMany({ _id: { $in: taskIds } });
-    
-    // Delete all user plans
-    await UserPlan.deleteMany({ userId });
+    // Get user plans first (needed for task deletion)
+    const userPlans = await UserPlan.find({ userId: userObjectId });
 
-    // 3. Handle referral relationships
-    // Remove user from referrer's referrals array
-    if (user.referredBy) {
-      await User.updateOne(
-        { _id: user.referredBy },
-        { $pull: { referrals: user._id } }
-      );
+    // Delete tasks associated with user's plans
+    let taskIds = [];
+    if (userPlans.length > 0) {
+      taskIds = userPlans.flatMap(plan => plan.tasks || []);
+      if (taskIds.length > 0) {
+        await Task.deleteMany({ _id: { $in: taskIds } });
+      }
     }
 
-    // Update users who were referred by this user
-    await User.updateMany(
-      { referredBy: user._id },
-      { $unset: { referredBy: "" } }
-    );
+    // Perform all deletions in parallel for better performance
+    const [
+      userPlansResult,
+      earningsResult,
+      referralEarningsResult,
+      withdrawalRequestsResult
+    ] = await Promise.all([
+      // Delete user plans
+      UserPlan.deleteMany({ userId: userObjectId }),
+      
+      // Delete user's earnings
+      Earnings.deleteMany({ userId: userObjectId }),
+      
+      // Delete referral earnings where user is either referrer or referee
+      ReferralEarnings.deleteMany({ 
+        $or: [
+          { userId: userObjectId }, 
+          { referredUserId: userObjectId }
+        ]
+      }),
+      
+      // Delete user's withdrawal requests
+      WithdrawalRequest.deleteMany({ userId: userObjectId })
+    ]);
 
-    // 4. Delete earnings
-    await Earnings.deleteMany({ userId });
+    // Handle referral relationships
+    await Promise.all([
+      // Remove user from referrer's referrals array
+      user.referredBy && User.updateOne(
+        { _id: user.referredBy },
+        { $pull: { referrals: userObjectId } }
+      ),
+      
+      // Update users who were referred by this user
+      User.updateMany(
+        { referredBy: userObjectId },
+        { $unset: { referredBy: "" } }
+      )
+    ]);
 
-    // 5. Delete referral earnings
-    await ReferralEarnings.deleteMany({ 
-      $or: [{ referrerId: userId }, { refereeId: userId }]
-    });
-
-    // 6. Finally delete the user
-    await User.deleteOne({ _id: userId });
+    // Finally delete the user
+    const userResult = await User.deleteOne({ _id: userObjectId });
     
     res.status(200).json({ 
       message: "User and all associated data deleted successfully",
-      deletedUserPlans: userPlans.length,
-      deletedTasks: taskIds.length
+      deletedData: {
+        user: userResult.deletedCount,
+        plans: userPlansResult.deletedCount,
+        tasks: taskIds.length,
+        earnings: earningsResult.deletedCount,
+        referralEarnings: referralEarningsResult.deletedCount,
+        withdrawalRequests: withdrawalRequestsResult.deletedCount
+      }
     });
 
   } catch (error) {

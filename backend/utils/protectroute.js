@@ -15,7 +15,6 @@ const protect = async (req, res, next) => {
 
     // Fetch user from the database using the decoded userId
     const user = await User.findById(decoded.id);
-    console.log("Fetched User:", user); // Debug user data
 
     if (!user) {
       return res.status(401).json({ message: "User not found." });

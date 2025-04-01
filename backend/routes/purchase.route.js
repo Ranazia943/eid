@@ -2,7 +2,6 @@ import express from 'express';
 import { 
   purchasePlan, 
   getUserProfitAndPlans,
- 
   getUserDetails,
   getReferralDetails,getAllUsers,getUserPlansWithTasks,getTotalDepositOfUserPlans,getUserById,getAllPurchasedPlans,updatePlanState
 } from '../controllers/purchase.controller.js';

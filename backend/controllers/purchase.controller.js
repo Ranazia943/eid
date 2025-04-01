@@ -61,22 +61,73 @@ export const purchasePlan = async (req, res) => {
     for (let task of tasks) {
       const userTask = new Task({
         planId: planId,
-        userId: userId, // Associate task with the user
+        userId: userId,
         type: task.type,
         url: task.url,
         price: task.price,
-        status: 'pending', // Task is initially pending
+        status: 'pending',
         startDate: new Date(),
-        endDate: endDate, // Set task end date same as plan end date
+        endDate: endDate,
       });
 
       const savedTask = await userTask.save();
-      taskIds.push(savedTask._id); // Store the task ID to link with UserPlan
+      taskIds.push(savedTask._id);
     }
 
     // Update UserPlan with the task references
     userPlan.tasks = taskIds;
     await userPlan.save();
+
+    // ===== REFERRAL EARNINGS LOGIC =====
+    // Find the user who made this purchase
+    const purchasingUser = await User.findById(userId);
+    
+    if (purchasingUser && purchasingUser.referredBy) {
+      // Calculate 5% of plan price for referral earnings
+      const referralAmount = plan.price * 0.05;
+      
+      // Find or create referral earnings record for the referrer
+      let referralEarnings = await ReferralEarnings.findOne({
+        userId: purchasingUser.referredBy,
+        referredUserId: userId
+      });
+
+      if (!referralEarnings) {
+        referralEarnings = new ReferralEarnings({
+          userId: purchasingUser.referredBy,
+          referredUserId: userId,
+          dailyProfitShare: 0, // Not using daily profit share in this case
+          totalEarned: referralAmount
+        });
+      } else {
+        referralEarnings.totalEarned += referralAmount;
+      }
+
+      await referralEarnings.save();
+
+      // Update the referrer's earnings
+      let referrerEarnings = await Earnings.findOne({ userId: purchasingUser.referredBy });
+      
+      if (!referrerEarnings) {
+        referrerEarnings = new Earnings({
+          userId: purchasingUser.referredBy,
+          totalEarnings: referralAmount,
+          dailyEarnings: [{
+            date: new Date(),
+            amount: referralAmount
+          }]
+        });
+      } else {
+        referrerEarnings.totalEarnings += referralAmount;
+        referrerEarnings.dailyEarnings.push({
+          date: new Date(),
+          amount: referralAmount
+        });
+      }
+
+      await referrerEarnings.save();
+    }
+    // ===== END REFERRAL LOGIC =====
 
     return res.status(201).json({ message: 'Plan purchased and tasks created successfully', userPlan });
   } catch (error) {
